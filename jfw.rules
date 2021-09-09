@@ -1,81 +1,45 @@
 #!/bin/bash
 
-PATH="/usr/sbin:/sbin:/usr/bin:/bin"
-
-flush() {
-	iptables -P INPUT ACCEPT
-	iptables -P OUTPUT ACCEPT
-	iptables -P FORWARD ACCEPT
-	iptables -F INPUT
-	iptables -F OUTPUT
-	iptables -F FORWARD
-	iptables -F -t nat
-	iptables -F -t mangle
-
-	ip6tables -P INPUT ACCEPT
-	ip6tables -P OUTPUT ACCEPT
-	ip6tables -P FORWARD ACCEPT
-	ip6tables -F INPUT
-	ip6tables -F OUTPUT
-	ip6tables -F FORWARD
-    ip6tables -F -t nat
-    ip6tables -F -t mangle
-}
-
-if [[ "$1" == "flush" ]]; then
-    flush
-	echo "Firewall rules flushed."
-    exit 0
-elif [[ "$1" == "edit" ]]; then
-    sudoedit /etc/jfw/jfw.rules && systemctl reload jfw.service
-    echo "Firewall rules updated."
-    exit 0
-elif [[ "$1" == "logs" ]]; then
-    dmesg -T | grep JFW
-    exit 0
-elif [[ "$1" == "list" ]]; then
-    echo "********** IPv4 **********"
-    iptables -S -v
-    echo "********** IPv6 **********"
-    ip6tables -S -v
-    exit 0
-fi
-
-flush
-
-#########
-# IPv4  #
-#########
-
-## Loop device
-iptables -A INPUT -i lo -j ACCEPT
-
-## Ping, router advertisements etc
-iptables -A INPUT -p icmp -j ACCEPT
-iptables -A INPUT -p ALL -d 224.0.0.1 -j ACCEPT
-
-## established inbound
-iptables -A INPUT -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-## MDNS
-iptables -A INPUT -p udp --dport 5353 -j ACCEPT
-
-## Wireguard network
-## Replace <PORT> AND <INTERFACE>
-#iptables -A INPUT -p udp --dport <PORT> -j ACCEPT
-#iptables -A INPUT -i <WIREGUARD_INTERFACE> -j ACCEPT
-
-## SSH access
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-
-## Logging and dropping other inbound packets
-## "log lines" may generate too much log entries
-## uncomment the following lines to enable logging
-#iptables -A INPUT -p ALL -j LOG --log-prefix "JFW IPv4 DROP::"
-#iptables -A INPUT -p ALL -j DROP
+## These variables make setting up NAT easier, just uncomment the NAT sections
+## below
+PUBLIC_INTERFACE=
+LAN_INTERFACE=
+JFW_LOG_4='-j LOG --log-prefix "[ JFW IPv4 DROP ]"'
+JFW_LOG_6='-j LOG --log-prefix "[ JFW IPv6 DROP ]"'
 
 
-## Default policies for IPv4
+
+
+
+		#########
+		# IPv4  #
+		#########
+
+##======== General required =======## 			
+iptables -A INPUT -i lo -m conntrack --ctstate NEW -j ACCEPT                    ## Loop device
+iptables -A INPUT -p icmp -m conntrack --ctstate NEW -j ACCEPT                  ## ICMP, e.g. ping
+iptables -A INPUT -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT   ## Existing and related to outgoing
+
+##============== NAT ==============##
+# iptables -A FORWARD -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
+# iptables -A FORWARD -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# iptables -t nat -A POSTROUTING -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -j MASQUERADE
+
+##============ Public =============##
+# iptables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 80 -m conntrack --ctstate NEW -j ACCEPT
+# iptables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 443 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+
+##========== LAN enp4s0 ===========##
+iptables -A INPUT -i enp4s0 -m conntrack --ctstate NEW -j ACCEPT
+# iptables -A INPUT -i enp4s0 -p ALL -d 224.0.0.1 -m conntrack --ctstate NEW -j ACCEPT
+# iptables -A INPUT -i enp4s0 -p udp --dport 5353 -m conntrack --ctstate NEW -j ACCEPT	## MDNS
+
+##=========== Logging =============##
+# iptables -A INPUT -p ALL $JFW_LOG_4
+# iptables -A INPUT -p ALL -j DROP
+
+## Default policies for IPv4 ##
 iptables -P INPUT DROP
 iptables -P OUTPUT ACCEPT
 iptables -P FORWARD DROP
@@ -85,50 +49,42 @@ iptables -P FORWARD DROP
 
 
 
-########
-# IPv6 #
-########
+		########
+		# IPv6 #
+		########
 
-## Loop device
-ip6tables -A INPUT -i lo -j ACCEPT
+##=========== General ===========##
+ip6tables -A INPUT -i lo -m conntrack --ctstate NEW -j ACCEPT                                   ## Loop device
+ip6tables -A INPUT -p ipv6-icmp -m conntrack --ctstate NEW -j ACCEPT                            ## ICMP, e.g. ping
+ip6tables -A INPUT -p icmpv6 -m conntrack --ctstate NEW -j ACCEPT                               ## These are required for IPv6
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT                         ## Existing and related to outgoing
+ip6tables -A INPUT -d fe80::/10 -p udp -m conntrack --ctstate NEW -m udp --dport 546 -j ACCEPT  ## DHCPv6-client
+# ip6tables -A INPUT -i enp4s0 -p udp --dport 547 -m conntrack --ctstate NEW -j ACCEPT            ## DHCPv6 server
 
-## Ping, router advertisements etc
-ip6tables -A INPUT -p icmpv6 -j  ACCEPT
+##============= NAT ===============##
+# ip6tables -A FORWARD -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
+# ip6tables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+#
+# NAT may not be desired for IPv6, if the clients on your LAN get
+# a public IPv6 address from the DHCP server, you may want to leave this
+# commented
+# ip6tables -t nat -A POSTROUTING -o $PUBLIC_INTERFACE -j MASQUERADE
 
-## established inbound
-ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+##============ Public =============##
+# ip6tables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 80 -m conntrack --ctstate NEW -j ACCEPT
+# ip6tables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 443 -m conntrack --ctstate NEW -j ACCEPT
+ip6tables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
 
-## MDNS
-ip6tables -A INPUT -p udp --dport 5353 -j ACCEPT
+##============= LAN ===============##
+ip6tables -A INPUT -i $LAN_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
+# ip6tables -A INPUT -i enp4s0 -p udp --dport 5353 -j ACCEPT	## MDNS
 
-## Wireguard network
-## Replace <PORT> and <WIREGUARD_INTERFACE> and uncomment the following lines
-#ip6tables -A INPUT -p udp --dport <PORT> -j ACCEPT
-#ip6tables -A INPUT -i <WIREGUARD_INTERFACE> -j ACCEPT
-
-## Logging and dropping other inbound packets     
-## "log lines" may generate too much log entries
-## uncomment the following lines to enable logging
-# ip6tables -A INPUT -p ALL -j LOG --log-prefix "JFW IPv6 DROP::"
+##=========== Logging =============##
+# ip6tables -A INPUT -p ALL $JFW_LOG_6
 # ip6tables -A INPUT -p ALL -j DROP
 
-## Default policies for IPv6
+##=== Default policies for IPv6 ===##
 ip6tables -P INPUT DROP
 ip6tables -P OUTPUT ACCEPT
 ip6tables -P FORWARD DROP
-
-
-
-
-## test-parameter for testing, flushes rules after 60 seconds
-## reload for resetting temporary changes to those defined in this file
-if [[ "$1" == "test" ]]; then
-	sleep 60
-    flush
-	echo "Firewall test finished, rules flushed."
-    exit 0
-elif [[ "$1" == "reload" ]]; then
-    echo "Firewall rules reloaded."
-    exit 0
-fi
 

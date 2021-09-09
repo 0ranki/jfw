@@ -3,9 +3,9 @@ Description=iptables rules
 After=network.target
 
 [Service]
-ExecStart=/etc/jfw/jfw.rules
-ExecStop=/etc/jfw/jfw.rules flush
-ExecReload=/etc/jfw/jfw.rules
+ExecStart=/usr/local/sbin/jfw load
+ExecStop=/usr/local/sbin/jfw flush
+ExecReload=/usr/local/sbin/jfw reload
 RemainAfterExit=yes
 
 [Install]

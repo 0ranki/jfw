@@ -1,0 +1,94 @@
+#!/bin/bash
+
+PATH="/usr/sbin:/sbin:/usr/bin:/bin"
+RULES_FILE="/etc/jfw/jfw.rules"
+VERSION=1.0
+
+flush() {
+    iptables -P INPUT ACCEPT
+    iptables -P OUTPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -F INPUT
+    iptables -F OUTPUT
+    iptables -F FORWARD
+    iptables -F -t nat
+    iptables -F -t mangle
+
+    ip6tables -P INPUT ACCEPT
+    ip6tables -P OUTPUT ACCEPT
+    ip6tables -P FORWARD ACCEPT
+    ip6tables -F INPUT
+    ip6tables -F OUTPUT
+    ip6tables -F FORWARD
+    ip6tables -F -t nat
+    ip6tables -F -t mangle
+}
+
+load () {
+    if [[ -f "$RULES_FILE" ]]; then
+        flush
+        . $RULES_FILE
+        echo "Firewall rules applied"
+    else
+        echo "Could not find $RULES_FILE, flushing rules and exiting."
+        flush
+        exit 1
+    fi
+}
+
+usage () {
+    printf "Usage: $0 ACTION
+    Available ACTIONs:
+    flush       restore default rules
+    edit        edit and apply rules
+    logs        view dmesg logs, add log rules via edit
+    list        list current ruleset
+    reload      (re)apply rules
+
+    JFW version $VERSION
+"
+
+}
+
+if [[ "$#" -eq 0 ]]; then
+    usage
+elif [[ "$1" == "flush" ]]; then
+    flush
+    echo "Firewall rules flushed."
+elif [[ "$1" == "edit" ]]; then
+    if ! systemctl is-active jfw.service &> /dev/null; then
+        printf "JFW is not running, you can edit the rules but\nthe changes won't take effect until you enable the service\n"
+        OFFLINE=true
+    fi
+    sudoedit $RULES_FILE
+    [[ "$OFFLINE" != "true" ]] && systemctl reload jfw.service
+    echo "Firewall rules updated."
+elif [[ "$1" == "logs" ]]; then
+    dmesg -T | grep JFW
+elif [[ "$1" == "list" ]]; then
+    echo "********** IPv4 **********"
+    iptables -S -v
+    echo "********** IPv6 **********"
+    ip6tables -S -v
+elif [[ "$1" == "load" ]]; then
+    load
+elif [[ "$1" == "test" ]]; then
+    load
+    echo "Waiting 60 seconds before flushing rules.."
+    SPINNER=('[*   ]' '[ *  ]' '[  * ]' '[   *]')
+    j=0
+    SLEEP=0
+    while [[ "$SLEEP" -lt 60 ]]; do
+        printf "${SPINNER[${j}]}\r"
+        sleep 0.25
+        let j=$j+1
+        [[ "$j" -gt 3 ]] && j=0 && let SLEEP=$SLEEP+1
+    done
+    flush
+    echo "Firewall test finished, rules flushed."
+elif [[ "$1" == "reload" ]]; then
+    load
+elif [[ "$1" == "status" ]]; then
+    systemctl status jfw.service
+fi
+exit 0

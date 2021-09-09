@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 # root check
 if [[ "$UID" -ne 0 ]]; then
@@ -6,17 +6,19 @@ if [[ "$UID" -ne 0 ]]; then
     exit 1
 fi
 
+RULES_FILE='/etc/jfw/jfw.rules'
+
 # Make /etc/jfw directory with "rules" file
 # (which is really the iptables script)
-if [[ -f /etc/jfw/jfw.rules ]]; then
+if [[ -f $RULES_FILE ]]; then
     echo "Found existing jfw configuration, do you wish to overwrite (y/n)?"
     read -n 1
     if [[ "$REPLY" == "y" ]];then
-        echo "Overwriting '/etc/jfw/jfw.rules'"
+        echo "Overwriting '$RULES_FILE'"
         cp jfw.rules /etc/jfw/
         chmod -R 700 /etc/jfw
     else
-        echo "Not overwriting '/etc/jfw/jfw.rules' ."
+        echo "Not overwriting '$RULES_FILE' ."
     fi
 else
     mkdir -p /etc/jfw
@@ -24,11 +26,12 @@ else
     chmod -R 700 /etc/jfw
 fi
 
-# Create symlink to jfw.rules:
-ln -s /etc/jfw/jfw.rules /usr/sbin/jfw
+# Copy executable in place:
+cp jfw /usr/local/sbin/jfw
+chown root:wheel /usr/local/sbin/jfw
+chmod 750 /usr/local/sbin/jfw
 
 # Install systemd service file,
-# Still needs to be enabled automatically
 cp jfw.service /etc/systemd/system
 systemctl daemon-reload
 
@@ -39,6 +42,6 @@ if [[ "$REPLY" == "yes" ]]; then
     systemctl enable --now jfw
 else
     echo "You can edit the iptables rules to your liking by editing"
-    echo "'/etc/jfw/jfw.rules'. Afterwards you can use systemct to start"
+    echo "'$RULES_FILE'. Afterwards you can use systemct to start"
     echo "and/or enable the firewall."
 fi

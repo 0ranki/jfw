@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 if [[ "$UID" -ne 0 ]]; then
     echo "This script must be run as root."
