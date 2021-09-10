@@ -20,7 +20,7 @@ iptables -A INPUT -i lo -m conntrack --ctstate NEW -j ACCEPT                    
 iptables -A INPUT -p icmp -m conntrack --ctstate NEW -j ACCEPT                  ## ICMP, e.g. ping
 iptables -A INPUT -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT   ## Existing and related to outgoing
 
-##============== NAT ==============##
+##============= NAT ===============##
 # iptables -A FORWARD -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
 # iptables -A FORWARD -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 # iptables -t nat -A POSTROUTING -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -j MASQUERADE
@@ -30,12 +30,12 @@ iptables -A INPUT -p ALL -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT   
 # iptables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 443 -m conntrack --ctstate NEW -j ACCEPT
 iptables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
 
-##========== LAN enp4s0 ===========##
+##============= LAN ===============##
 iptables -A INPUT -i enp4s0 -m conntrack --ctstate NEW -j ACCEPT
 # iptables -A INPUT -i enp4s0 -p ALL -d 224.0.0.1 -m conntrack --ctstate NEW -j ACCEPT
 # iptables -A INPUT -i enp4s0 -p udp --dport 5353 -m conntrack --ctstate NEW -j ACCEPT	## MDNS
 
-##=========== Logging =============##
+##============ Logging ============##
 # iptables -A INPUT -p ALL $JFW_LOG_4
 # iptables -A INPUT -p ALL -j DROP
 
@@ -59,15 +59,15 @@ ip6tables -A INPUT -p ipv6-icmp -m conntrack --ctstate NEW -j ACCEPT            
 ip6tables -A INPUT -p icmpv6 -m conntrack --ctstate NEW -j ACCEPT                               ## These are required for IPv6
 ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT                         ## Existing and related to outgoing
 ip6tables -A INPUT -d fe80::/10 -p udp -m conntrack --ctstate NEW -m udp --dport 546 -j ACCEPT  ## DHCPv6-client
-# ip6tables -A INPUT -i enp4s0 -p udp --dport 547 -m conntrack --ctstate NEW -j ACCEPT            ## DHCPv6 server
+# ip6tables -A INPUT -i $LAN_INTERFACE -p udp --dport 547 -m conntrack --ctstate NEW -j ACCEPT    ## DHCPv6 server
 
 ##============= NAT ===============##
 # ip6tables -A FORWARD -i $LAN_INTERFACE -o $PUBLIC_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
 # ip6tables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 #
-# NAT may not be desired for IPv6, if the clients on your LAN get
-# a public IPv6 address from the DHCP server, you may want to leave this
-# commented
+### NAT may not be desired for IPv6, if the clients on your LAN get
+### a public IPv6 address from the DHCP server, you may want to leave this
+### commented
 # ip6tables -t nat -A POSTROUTING -o $PUBLIC_INTERFACE -j MASQUERADE
 
 ##============ Public =============##
@@ -77,7 +77,7 @@ ip6tables -A INPUT -i $PUBLIC_INTERFACE -p tcp --dport 22 -m conntrack --ctstate
 
 ##============= LAN ===============##
 ip6tables -A INPUT -i $LAN_INTERFACE -m conntrack --ctstate NEW -j ACCEPT
-# ip6tables -A INPUT -i enp4s0 -p udp --dport 5353 -j ACCEPT	## MDNS
+# ip6tables -A INPUT -i $LAN_INTERFACE -p udp --dport 5353 -j ACCEPT	## MDNS
 
 ##=========== Logging =============##
 # ip6tables -A INPUT -p ALL $JFW_LOG_6
