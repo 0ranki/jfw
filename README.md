@@ -1,5 +1,5 @@
 # jfw
-### iptables control system
+iptables control system
 
 ##### What is it?
 This is my take on replacing the rc.local -method of configuring `iptables` at
